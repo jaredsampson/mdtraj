@@ -678,6 +678,8 @@ class Atom(object):
         # VMD sometimes uses hex for atoms greater than 9,999
         if pdbstructure is not None and pdbstructure._atom_numbers_are_hex:
             self.serial_number = int(pdb_line[6:11], 16)
+        elif pdbstructure is not None and pdbstructure._atom_numbers_are_base36:
+            self.serial_number = int(pdb_line[6:11], 36)
         else:
             try:
                 self.serial_number = int(pdb_line[6:11])
@@ -686,8 +688,13 @@ class Atom(object):
                     self.serial_number = int(pdb_line[6:11], 16)
                     pdbstructure._atom_numbers_are_hex = True
                 except ValueError:
-                    # Just give it the next number in sequence.
-                    self.serial_number = pdbstructure._next_atom_number
+                    try:
+                        # Desmond trajectory frames can contain base 36 numbers, i.e. [0-9A-Z]
+                        self.serial_number = int(pdb_line[6:11], 36)
+                        pdbstructure._atom_numbers_are_base36 = True
+                    except ValueError:
+                        # Just give it the next number in sequence.
+                        self.serial_number = pdbstructure._next_atom_number
         self.name_with_spaces = pdb_line[12:16]
         alternate_location_indicator = pdb_line[16]
 
@@ -705,6 +712,8 @@ class Atom(object):
         self.chain_id = pdb_line[21]
         if pdbstructure is not None and pdbstructure._residue_numbers_are_hex:
             self.residue_number = int(pdb_line[22:26], 16)
+        elif pdbstructure is not None and pdbstructure._residue_numbers_are_base36:
+            self.residue_number = int(pdb_line[22:26], 36)
         else:
             try:
                 self.residue_number = int(pdb_line[22:26])
@@ -713,21 +722,26 @@ class Atom(object):
                     self.residue_number = int(pdb_line[22:26], 16)
                     pdbstructure._residue_numbers_are_hex = True
                 except ValueError:
-                    # When VMD runs out of hex values it starts filling in the residue ID field with ****
-                    # Look at the most recent atoms to figure out whether this is a new residue or not.
-                    if pdbstructure._current_model is None or pdbstructure._current_model._current_chain is None or pdbstructure._current_model._current_chain._current_residue is None:
-                         # This is the first residue in the model.
-                        self.residue_number = pdbstructure._next_residue_number
-                    else:
-                        currentRes = pdbstructure._current_model._current_chain._current_residue
-                        if currentRes.name_with_spaces != self.residue_name_with_spaces:
-                            # The residue name has changed.
-                            self.residue_number = pdbstructure._next_residue_number
-                        elif self.name_with_spaces in currentRes.atoms_by_name:
-                            # There is already an atom with this name.
+                    try:
+                        # Desmond trajectory frames can contain base 36 numbers, i.e. [0-9A-Z]
+                        self.residue_number = int(pdb_line[22:26], 36)
+                        pdbstructure._residue_numbers_are_base36 = True
+                    except ValueError:
+                        # When VMD runs out of hex values it starts filling in the residue ID field with ****
+                        # Look at the most recent atoms to figure out whether this is a new residue or not.
+                        if pdbstructure._current_model is None or pdbstructure._current_model._current_chain is None or pdbstructure._current_model._current_chain._current_residue is None:
+                             # This is the first residue in the model.
                             self.residue_number = pdbstructure._next_residue_number
                         else:
-                            self.residue_number = currentRes.number
+                            currentRes = pdbstructure._current_model._current_chain._current_residue
+                            if currentRes.name_with_spaces != self.residue_name_with_spaces:
+                                # The residue name has changed.
+                                self.residue_number = pdbstructure._next_residue_number
+                            elif self.name_with_spaces in currentRes.atoms_by_name:
+                                # There is already an atom with this name.
+                                self.residue_number = pdbstructure._next_residue_number
+                            else:
+                                self.residue_number = currentRes.number
         self.insertion_code = pdb_line[26]
         # coordinates, occupancy, and temperature factor belong in Atom.Location object
         x = float(pdb_line[30:38])
